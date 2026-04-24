@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import AssistantMessage, Profile, Skill, TelegramLink, User
+from .models import AssistantMessage, Profile, Skill, TelegramLink, User, Vacancy
 from .google_oauth import (
     GoogleOAuthError,
     build_google_authorize_url,
@@ -37,6 +37,7 @@ from .serializers import (
     TelegramLinkStartRequestSerializer,
     TelegramLinkStartResponseSerializer,
     TelegramLinkStatusSerializer,
+    VacancySerializer,
     UserSerializer,
 )
 from .services import build_admin_candidates, build_job_matches
@@ -102,7 +103,9 @@ def _run_assistant(*, user: User | None, user_message: str, channel: str, extern
     system_prompt = (
         "You are EasyTap.ai, an AI career assistant for students. "
         "Give practical, concise, supportive answers focused on getting hired. "
-        "Use the student's profile and vacancies context from hh.ru and other sources. "
+        "No fluff, no long intros, no generic theory. "
+        "Use short bullet points and concrete actions. "
+        "Use the student's profile and vacancies context from the internal EasyTap database. "
         "Provide concrete steps for resume, application, and interview preparation. "
         "Do not invent data outside the provided vacancies list. "
         "Answer in the same language as the user's message when possible."
@@ -115,9 +118,10 @@ def _run_assistant(*, user: User | None, user_message: str, channel: str, extern
         "User message:\n"
         f"{user_message}\n\n"
         "Required output:\n"
-        "1) Best 2-3 vacancies and why they fit.\n"
-        "2) Practical application plan for next 48 hours.\n"
-        "3) Interview prep tips specific to these roles."
+        "1) Best 2-3 vacancies and why they fit (one short line each).\n"
+        "2) Practical 48-hour application plan (max 5 bullets).\n"
+        "3) Interview prep tips specific to these roles (max 4 bullets).\n"
+        "Keep total response under 1400 characters."
     )
 
     client = Groq(api_key=settings.GROQ_API_KEY)
@@ -303,6 +307,52 @@ class JobMatchesView(APIView):
         skills = list(Skill.objects.filter(user=request.user))
         payload = build_job_matches(profile, skills)
         serializer = JobMatchSerializer(payload, many=True)
+        return Response(serializer.data)
+
+
+class VacancyCatalogView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        query = request.query_params.get("q", "").strip().lower()
+        items = Vacancy.objects.filter(is_active=True)
+        if query:
+            filtered_ids: list[str] = []
+            for vacancy in items:
+                text = " ".join(
+                    [
+                        vacancy.role,
+                        vacancy.company,
+                        vacancy.location,
+                        vacancy.source_program,
+                        vacancy.description,
+                        " ".join(vacancy.tags),
+                    ]
+                ).lower()
+                if query in text:
+                    filtered_ids.append(str(vacancy.id))
+            items = items.filter(id__in=filtered_ids)
+
+        payload = []
+        for vacancy in items.order_by("category", "role"):
+            payload.append(
+                {
+                    "id": vacancy.id,
+                    "company": vacancy.company,
+                    "role": vacancy.role,
+                    "location": vacancy.location,
+                    "employment_type": vacancy.employment_type,
+                    "salary": vacancy.salary,
+                    "tags": vacancy.tags,
+                    "match": 0,
+                    "reason": vacancy.description or "",
+                    "url": vacancy.url,
+                    "source": "easytap-db",
+                    "source_program": vacancy.source_program,
+                    "category": vacancy.category,
+                }
+            )
+        serializer = VacancySerializer(payload, many=True)
         return Response(serializer.data)
 
 

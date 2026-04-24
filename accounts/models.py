@@ -148,3 +148,28 @@ class AssistantMessage(models.Model):
     def __str__(self) -> str:
         owner = self.user_id or self.external_user_id or "anon"
         return f"AssistantMessage<{self.channel}:{owner}:{self.role}>"
+
+
+class Vacancy(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.CharField(max_length=120)
+    role = models.CharField(max_length=160)
+    location = models.CharField(max_length=120)
+    employment_type = models.CharField(max_length=60)
+    salary = models.CharField(max_length=60)
+    tags = models.JSONField(default=list, blank=True)
+    description = models.TextField(blank=True)
+    source_program = models.CharField(max_length=220, blank=True)
+    program_code = models.CharField(max_length=20, blank=True, db_index=True)
+    program_level = models.CharField(max_length=20, blank=True)
+    category = models.CharField(max_length=40, blank=True)
+    url = models.URLField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["role", "company"]
+
+    def __str__(self) -> str:
+        return f"{self.role} @ {self.company}"

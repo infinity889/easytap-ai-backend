@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate, password_validation
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import Profile, Skill, User
+from .models import Profile, Skill, User, Vacancy
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -106,6 +106,34 @@ class JobMatchSerializer(serializers.Serializer):
     reason = serializers.CharField()
     url = serializers.URLField(required=False, allow_blank=True)
     source = serializers.CharField(required=False, allow_blank=True)
+    source_program = serializers.CharField(required=False, allow_blank=True)
+    category = serializers.CharField(required=False, allow_blank=True)
+
+
+class VacancySerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(format="hex_verbose", read_only=True)
+    type = serializers.CharField(source="employment_type", read_only=True)
+    match = serializers.IntegerField(read_only=True)
+    reason = serializers.CharField(read_only=True)
+    source = serializers.CharField(read_only=True, default="easytap-db")
+
+    class Meta:
+        model = Vacancy
+        fields = (
+            "id",
+            "company",
+            "role",
+            "location",
+            "type",
+            "salary",
+            "tags",
+            "match",
+            "reason",
+            "url",
+            "source",
+            "source_program",
+            "category",
+        )
 
 
 class AdminCandidateSerializer(serializers.Serializer):
