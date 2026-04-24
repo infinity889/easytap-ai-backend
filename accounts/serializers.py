@@ -69,6 +69,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "interests",
             "experience",
             "avatar_url",
+            "github_url",
+            "telegram_url",
             "onboarded",
         )
 
@@ -113,9 +115,9 @@ class JobMatchSerializer(serializers.Serializer):
 class VacancySerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(format="hex_verbose", read_only=True)
     type = serializers.CharField(source="employment_type", read_only=True)
-    match = serializers.IntegerField(read_only=True)
-    reason = serializers.CharField(read_only=True)
-    source = serializers.CharField(read_only=True, default="easytap-db")
+    match = serializers.SerializerMethodField()
+    reason = serializers.SerializerMethodField()
+    source = serializers.SerializerMethodField()
 
     class Meta:
         model = Vacancy
@@ -129,11 +131,25 @@ class VacancySerializer(serializers.ModelSerializer):
             "tags",
             "match",
             "reason",
+            "description",
             "url",
             "source",
             "source_program",
+            "program_code",
+            "program_level",
             "category",
+            "created_at",
+            "updated_at",
         )
+
+    def get_match(self, obj) -> int:
+        return 0
+
+    def get_reason(self, obj) -> str:
+        return obj.description or ""
+
+    def get_source(self, obj) -> str:
+        return "easytap-db"
 
 
 class AdminCandidateSerializer(serializers.Serializer):

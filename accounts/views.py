@@ -336,7 +336,11 @@ class VacancyCatalogView(APIView):
             "description",
             "url",
             "source_program",
+            "program_code",
+            "program_level",
             "category",
+            "created_at",
+            "updated_at",
         )
 
         if query:
@@ -355,26 +359,7 @@ class VacancyCatalogView(APIView):
             items = items.filter(location__iexact=location)
 
         items = items.order_by("category", "role")[:limit]
-        payload = []
-        for vacancy in items:
-            payload.append(
-                {
-                    "id": vacancy.id,
-                    "company": vacancy.company,
-                    "role": vacancy.role,
-                    "location": vacancy.location,
-                    "employment_type": vacancy.employment_type,
-                    "salary": vacancy.salary,
-                    "tags": vacancy.tags,
-                    "match": 0,
-                    "reason": vacancy.description or "",
-                    "url": vacancy.url,
-                    "source": "easytap-db",
-                    "source_program": vacancy.source_program,
-                    "category": vacancy.category,
-                }
-            )
-        serializer = VacancySerializer(payload, many=True)
+        serializer = VacancySerializer(items, many=True)
         return Response(serializer.data)
 
 
@@ -386,22 +371,7 @@ class VacancyDetailView(APIView):
         if vacancy is None:
             return Response({"detail": "Vacancy not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        payload = {
-            "id": vacancy.id,
-            "company": vacancy.company,
-            "role": vacancy.role,
-            "location": vacancy.location,
-            "employment_type": vacancy.employment_type,
-            "salary": vacancy.salary,
-            "tags": vacancy.tags,
-            "match": 0,
-            "reason": vacancy.description or "",
-            "url": vacancy.url,
-            "source": "easytap-db",
-            "source_program": vacancy.source_program,
-            "category": vacancy.category,
-        }
-        serializer = VacancySerializer(payload)
+        serializer = VacancySerializer(vacancy)
         return Response(serializer.data)
 
 
@@ -512,25 +482,27 @@ class TelegramLinkStartView(APIView):
             )
             return Response(response.data)
 
-        alphabet = string.ascii_uppercase + string.digits
-        code = "".join(secrets.choice(alphabet) for _ in range(6))
-        link.link_code = code
-        link.code_expires_at = TelegramLink.default_expiry()
-        link.confirmed_at = None
-        link.save(
-            update_fields=[
-                "tg_username",
-                "tg_full_name",
-                "link_code",
-                "code_expires_at",
-                "confirmed_at",
-                "updated_at",
-            ]
-        )
+        if not link.is_code_active:
+            alphabet = string.ascii_uppercase + string.digits
+            link.link_code = "".join(secrets.choice(alphabet) for _ in range(6))
+            link.code_expires_at = TelegramLink.default_expiry()
+            link.confirmed_at = None
+            link.save(
+                update_fields=[
+                    "tg_username",
+                    "tg_full_name",
+                    "link_code",
+                    "code_expires_at",
+                    "confirmed_at",
+                    "updated_at",
+                ]
+            )
+        else:
+            link.save(update_fields=["tg_username", "tg_full_name", "updated_at"])
 
         expires_in = int((link.code_expires_at - timezone.now()).total_seconds()) if link.code_expires_at else 0
         response = TelegramLinkStartResponseSerializer(
-            {"linked": False, "link_code": code, "expires_in_seconds": max(0, expires_in)}
+            {"linked": False, "link_code": link.link_code, "expires_in_seconds": max(0, expires_in)}
         )
         return Response(response.data)
 
