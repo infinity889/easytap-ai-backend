@@ -7,7 +7,7 @@ Backend for the EasyTap AI frontend built with Django, Django REST Framework, an
 - Custom user model with `student` / `admin` roles
 - JWT auth via `djangorestframework-simplejwt`
 - Student profile and skills management
-- Demo job match recommendations
+- External job sourcing from HH + Remotive with demo fallback
 - Admin candidates endpoint for recruiters
 - CORS configured for local frontend development
 
@@ -79,6 +79,9 @@ Add your Groq API key to backend `.env`:
 ```env
 GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=llama-3.3-70b-versatile
+HH_API_URL=https://api.hh.ru
+REMOTIVE_API_URL=https://remotive.com/api
+JOB_SEARCH_TIMEOUT=12
 ```
 
 Then restart Django.

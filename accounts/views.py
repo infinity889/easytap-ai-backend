@@ -215,7 +215,8 @@ class AssistantChatView(APIView):
         user = request.user
         profile = Profile.objects.filter(user=user).first()
         skills = list(Skill.objects.filter(user=user))
-        jobs = build_job_matches(profile, skills)[:4]
+        user_message = serializer.validated_data["message"]
+        jobs = build_job_matches(profile, skills, query=user_message)[:6]
 
         profile_summary = {
             "full_name": user.full_name,
@@ -233,9 +234,10 @@ class AssistantChatView(APIView):
 
         system_prompt = (
             "You are EasyTap.ai, an AI career assistant for students. "
-            "Give practical, concise, supportive answers. "
-            "Use the student's profile and recommended jobs when relevant. "
-            "If suggesting vacancies, mention why they fit the student. "
+            "Give practical, concise, supportive answers focused on getting hired. "
+            "Use the student's profile and vacancies context from hh.ru and other sources. "
+            "Provide concrete steps for resume, application, and interview preparation. "
+            "Do not invent data outside the provided vacancies list. "
             "Answer in the same language as the user's message when possible."
         )
 
@@ -243,7 +245,11 @@ class AssistantChatView(APIView):
             "Student context:\n"
             f"{profile_summary}\n\n"
             "User message:\n"
-            f"{serializer.validated_data['message']}"
+            f"{user_message}\n\n"
+            "Required output:\n"
+            "1) Best 2-3 vacancies and why they fit.\n"
+            "2) Practical application plan for next 48 hours.\n"
+            "3) Interview prep tips specific to these roles."
         )
 
         try:
@@ -276,11 +282,20 @@ class AdminCandidatesView(APIView):
 
     def get(self, request):
         query = request.query_params.get("q", "")
+        try:
+            min_match = int(request.query_params.get("min_match", "0"))
+        except ValueError:
+            min_match = 0
+        year_raw = request.query_params.get("year")
+        try:
+            year = int(year_raw) if year_raw else None
+        except ValueError:
+            year = None
         profiles = list(
             Profile.objects.select_related("user")
             .prefetch_related("user__skills")
             .filter(user__role=User.Role.STUDENT, onboarded=True)
         )
-        payload = build_admin_candidates(profiles, query=query)
+        payload = build_admin_candidates(profiles, query=query, min_match=min_match, year=year)
         serializer = AdminCandidateSerializer(payload, many=True)
         return Response(serializer.data)

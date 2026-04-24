@@ -104,6 +104,8 @@ class JobMatchSerializer(serializers.Serializer):
     match = serializers.IntegerField()
     tags = serializers.ListField(child=serializers.CharField())
     reason = serializers.CharField()
+    url = serializers.URLField(required=False, allow_blank=True)
+    source = serializers.CharField(required=False, allow_blank=True)
 
 
 class AdminCandidateSerializer(serializers.Serializer):

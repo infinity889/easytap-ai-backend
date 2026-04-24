@@ -139,3 +139,6 @@ GOOGLE_REDIRECT_URI = os.getenv(
 )
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+HH_API_URL = os.getenv("HH_API_URL", "https://api.hh.ru")
+REMOTIVE_API_URL = os.getenv("REMOTIVE_API_URL", "https://remotive.com/api")
+JOB_SEARCH_TIMEOUT = int(os.getenv("JOB_SEARCH_TIMEOUT", "12"))
