@@ -1,8 +1,11 @@
 from urllib.parse import urlencode
+import secrets
+import string
 
 from django.conf import settings
 from django.http import Http404
 from django.shortcuts import redirect
+from django.utils import timezone
 from groq import Groq
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
@@ -11,7 +14,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import Profile, Skill, User
+from .models import AssistantMessage, Profile, Skill, TelegramLink, User
 from .google_oauth import (
     GoogleOAuthError,
     build_google_authorize_url,
@@ -24,14 +27,116 @@ from .serializers import (
     AdminCandidateSerializer,
     AssistantChatRequestSerializer,
     AssistantChatResponseSerializer,
+    AssistantChannelChatRequestSerializer,
     CareerTokenObtainPairSerializer,
     JobMatchSerializer,
     ProfileSerializer,
     RegisterSerializer,
     SkillSerializer,
+    TelegramLinkConfirmRequestSerializer,
+    TelegramLinkStartRequestSerializer,
+    TelegramLinkStartResponseSerializer,
+    TelegramLinkStatusSerializer,
     UserSerializer,
 )
 from .services import build_admin_candidates, build_job_matches
+
+
+def _resolve_history_scope(*, user: User | None, channel: str, external_user_id: str | None) -> dict:
+    if user is not None:
+        return {"user": user}
+    return {"channel": channel, "external_user_id": (external_user_id or "")}
+
+
+def _get_recent_history(*, user: User | None, channel: str, external_user_id: str | None, limit: int = 12) -> list[dict]:
+    scope = _resolve_history_scope(user=user, channel=channel, external_user_id=external_user_id)
+    rows = list(AssistantMessage.objects.filter(**scope).order_by("-created_at")[:limit])
+    rows.reverse()
+    messages: list[dict] = []
+    for row in rows:
+        role = "assistant" if row.role == AssistantMessage.Role.ASSISTANT else "user"
+        messages.append({"role": role, "content": row.content})
+    return messages
+
+
+def _persist_dialog(*, user: User | None, channel: str, external_user_id: str | None, user_text: str, assistant_text: str) -> None:
+    AssistantMessage.objects.create(
+        user=user,
+        channel=channel,
+        external_user_id=external_user_id or "",
+        role=AssistantMessage.Role.USER,
+        content=user_text,
+    )
+    AssistantMessage.objects.create(
+        user=user,
+        channel=channel,
+        external_user_id=external_user_id or "",
+        role=AssistantMessage.Role.ASSISTANT,
+        content=assistant_text,
+    )
+
+
+def _run_assistant(*, user: User | None, user_message: str, channel: str, external_user_id: str | None = None) -> dict:
+    if not settings.GROQ_API_KEY:
+        raise RuntimeError("missing_groq_key")
+
+    profile = Profile.objects.filter(user=user).first() if user else None
+    skills = list(Skill.objects.filter(user=user)) if user else []
+    jobs = build_job_matches(profile, skills, query=user_message)[:6]
+
+    profile_summary = {
+        "full_name": user.full_name if user else "",
+        "email": user.email if user else "",
+        "role": user.role if user else "guest",
+        "career_goal": profile.career_goal if profile else "",
+        "university": profile.university if profile else "",
+        "major": profile.major if profile else "",
+        "year": profile.year if profile else None,
+        "interests": profile.interests if profile else [],
+        "experience": profile.experience if profile else "",
+        "skills": [{"name": skill.name, "level": skill.level} for skill in skills],
+        "job_matches": jobs,
+    }
+    history = _get_recent_history(user=user, channel=channel, external_user_id=external_user_id, limit=12)
+
+    system_prompt = (
+        "You are EasyTap.ai, an AI career assistant for students. "
+        "Give practical, concise, supportive answers focused on getting hired. "
+        "Use the student's profile and vacancies context from hh.ru and other sources. "
+        "Provide concrete steps for resume, application, and interview preparation. "
+        "Do not invent data outside the provided vacancies list. "
+        "Answer in the same language as the user's message when possible."
+    )
+    context_prompt = (
+        "Student context:\n"
+        f"{profile_summary}\n\n"
+        "Conversation history:\n"
+        f"{history}\n\n"
+        "User message:\n"
+        f"{user_message}\n\n"
+        "Required output:\n"
+        "1) Best 2-3 vacancies and why they fit.\n"
+        "2) Practical application plan for next 48 hours.\n"
+        "3) Interview prep tips specific to these roles."
+    )
+
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    completion = client.chat.completions.create(
+        model=settings.GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context_prompt},
+        ],
+    )
+    reply = completion.choices[0].message.content or "I could not generate a response."
+    _persist_dialog(
+        user=user,
+        channel=channel,
+        external_user_id=external_user_id,
+        user_text=user_message,
+        assistant_text=reply,
+    )
+    return {"reply": reply, "jobs": jobs}
 
 
 class RegisterView(APIView):
@@ -205,75 +310,61 @@ class AssistantChatView(APIView):
     def post(self, request):
         serializer = AssistantChatRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        if not settings.GROQ_API_KEY:
+        try:
+            payload = _run_assistant(
+                user=request.user,
+                user_message=serializer.validated_data["message"],
+                channel=AssistantMessage.Channel.WEB,
+                external_user_id=None,
+            )
+        except RuntimeError:
             return Response(
                 {"detail": "Groq API key is not configured on the backend."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-
-        user = request.user
-        profile = Profile.objects.filter(user=user).first()
-        skills = list(Skill.objects.filter(user=user))
-        user_message = serializer.validated_data["message"]
-        jobs = build_job_matches(profile, skills, query=user_message)[:6]
-
-        profile_summary = {
-            "full_name": user.full_name,
-            "email": user.email,
-            "role": user.role,
-            "career_goal": profile.career_goal if profile else "",
-            "university": profile.university if profile else "",
-            "major": profile.major if profile else "",
-            "year": profile.year if profile else None,
-            "interests": profile.interests if profile else [],
-            "experience": profile.experience if profile else "",
-            "skills": [{"name": skill.name, "level": skill.level} for skill in skills],
-            "job_matches": jobs,
-        }
-
-        system_prompt = (
-            "You are EasyTap.ai, an AI career assistant for students. "
-            "Give practical, concise, supportive answers focused on getting hired. "
-            "Use the student's profile and vacancies context from hh.ru and other sources. "
-            "Provide concrete steps for resume, application, and interview preparation. "
-            "Do not invent data outside the provided vacancies list. "
-            "Answer in the same language as the user's message when possible."
-        )
-
-        user_prompt = (
-            "Student context:\n"
-            f"{profile_summary}\n\n"
-            "User message:\n"
-            f"{user_message}\n\n"
-            "Required output:\n"
-            "1) Best 2-3 vacancies and why they fit.\n"
-            "2) Practical application plan for next 48 hours.\n"
-            "3) Interview prep tips specific to these roles."
-        )
-
-        try:
-            client = Groq(api_key=settings.GROQ_API_KEY)
-            completion = client.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            reply = completion.choices[0].message.content or "I could not generate a response."
         except Exception:
             return Response(
                 {"detail": "Groq request failed. Check GROQ_API_KEY and GROQ_MODEL."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        response = AssistantChatResponseSerializer(
-            {
-                "reply": reply,
-                "jobs": jobs,
-            }
-        )
+        response = AssistantChatResponseSerializer(payload)
+        return Response(response.data)
+
+
+class AssistantChannelChatView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = AssistantChannelChatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = None
+        if data["channel"] == "telegram":
+            link = TelegramLink.objects.filter(tg_user_id=int(data["external_user_id"]), user__isnull=False).first()
+            if link:
+                user = link.user
+
+        try:
+            payload = _run_assistant(
+                user=user,
+                user_message=data["message"],
+                channel=AssistantMessage.Channel.TELEGRAM,
+                external_user_id=str(data["external_user_id"]),
+            )
+        except RuntimeError:
+            return Response(
+                {"detail": "Groq API key is not configured on the backend."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            return Response(
+                {"detail": "Groq request failed. Check GROQ_API_KEY and GROQ_MODEL."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        response = AssistantChatResponseSerializer(payload)
         return Response(response.data)
 
 
@@ -299,3 +390,93 @@ class AdminCandidatesView(APIView):
         payload = build_admin_candidates(profiles, query=query, min_match=min_match, year=year)
         serializer = AdminCandidateSerializer(payload, many=True)
         return Response(serializer.data)
+
+
+class TelegramLinkStartView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = TelegramLinkStartRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        link, _ = TelegramLink.objects.get_or_create(tg_user_id=data["tg_user_id"])
+        link.tg_username = data.get("username", "") or ""
+        link.tg_full_name = data.get("full_name", "") or ""
+
+        if link.user_id:
+            response = TelegramLinkStartResponseSerializer(
+                {
+                    "linked": True,
+                    "message": "Telegram already linked to a website account.",
+                }
+            )
+            return Response(response.data)
+
+        alphabet = string.ascii_uppercase + string.digits
+        code = "".join(secrets.choice(alphabet) for _ in range(6))
+        link.link_code = code
+        link.code_expires_at = TelegramLink.default_expiry()
+        link.confirmed_at = None
+        link.save(
+            update_fields=[
+                "tg_username",
+                "tg_full_name",
+                "link_code",
+                "code_expires_at",
+                "confirmed_at",
+                "updated_at",
+            ]
+        )
+
+        expires_in = int((link.code_expires_at - timezone.now()).total_seconds()) if link.code_expires_at else 0
+        response = TelegramLinkStartResponseSerializer(
+            {"linked": False, "link_code": code, "expires_in_seconds": max(0, expires_in)}
+        )
+        return Response(response.data)
+
+
+class TelegramLinkConfirmView(APIView):
+    def post(self, request):
+        serializer = TelegramLinkConfirmRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data["code"].strip().upper()
+
+        link = TelegramLink.objects.filter(link_code=code).first()
+        if link is None or not link.is_code_active:
+            return Response({"detail": "Invalid or expired Telegram code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if link.user_id and link.user_id != request.user.id:
+            return Response({"detail": "This Telegram account is already linked to another user."}, status=409)
+
+        existing_for_user = TelegramLink.objects.filter(user=request.user).exclude(pk=link.pk).first()
+        if existing_for_user:
+            existing_for_user.user = None
+            existing_for_user.save(update_fields=["user", "updated_at"])
+
+        link.user = request.user
+        link.confirmed_at = timezone.now()
+        link.link_code = ""
+        link.code_expires_at = None
+        link.save(update_fields=["user", "confirmed_at", "link_code", "code_expires_at", "updated_at"])
+
+        return Response({"linked": True})
+
+
+class TelegramLinkStatusView(APIView):
+    def get(self, request):
+        link = TelegramLink.objects.filter(user=request.user).first()
+        if not link:
+            response = TelegramLinkStatusSerializer({"linked": False})
+            return Response(response.data)
+
+        response = TelegramLinkStatusSerializer(
+            {
+                "linked": True,
+                "tg_user_id": link.tg_user_id,
+                "tg_username": link.tg_username,
+                "tg_full_name": link.tg_full_name,
+                "confirmed_at": link.confirmed_at,
+            }
+        )
+        return Response(response.data)

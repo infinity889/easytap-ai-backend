@@ -125,3 +125,34 @@ class AssistantChatRequestSerializer(serializers.Serializer):
 class AssistantChatResponseSerializer(serializers.Serializer):
     reply = serializers.CharField()
     jobs = JobMatchSerializer(many=True)
+
+
+class AssistantChannelChatRequestSerializer(serializers.Serializer):
+    channel = serializers.ChoiceField(choices=["telegram"])
+    external_user_id = serializers.CharField(min_length=1, max_length=64)
+    message = serializers.CharField(min_length=1, max_length=4000)
+
+
+class TelegramLinkStartRequestSerializer(serializers.Serializer):
+    tg_user_id = serializers.IntegerField(min_value=1)
+    username = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    full_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
+
+
+class TelegramLinkStartResponseSerializer(serializers.Serializer):
+    linked = serializers.BooleanField()
+    link_code = serializers.CharField(required=False, allow_blank=True)
+    expires_in_seconds = serializers.IntegerField(required=False)
+    message = serializers.CharField(required=False, allow_blank=True)
+
+
+class TelegramLinkConfirmRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(min_length=4, max_length=12)
+
+
+class TelegramLinkStatusSerializer(serializers.Serializer):
+    linked = serializers.BooleanField()
+    tg_user_id = serializers.IntegerField(required=False)
+    tg_username = serializers.CharField(required=False, allow_blank=True)
+    tg_full_name = serializers.CharField(required=False, allow_blank=True)
+    confirmed_at = serializers.DateTimeField(required=False)

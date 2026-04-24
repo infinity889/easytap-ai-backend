@@ -3,6 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     AssistantChatView,
+    AssistantChannelChatView,
     AdminCandidatesView,
     GoogleLoginView,
     JobMatchesView,
@@ -14,6 +15,9 @@ from .views import (
     RegisterView,
     SkillDetailView,
     SkillListCreateView,
+    TelegramLinkConfirmView,
+    TelegramLinkStartView,
+    TelegramLinkStatusView,
 )
 
 
@@ -30,5 +34,9 @@ urlpatterns = [
     path("skills/<uuid:pk>/", SkillDetailView.as_view(), name="skill-detail"),
     path("jobs/matches/", JobMatchesView.as_view(), name="job-matches"),
     path("assistant/chat/", AssistantChatView.as_view(), name="assistant-chat"),
+    path("assistant/channel-chat/", AssistantChannelChatView.as_view(), name="assistant-channel-chat"),
+    path("tg/link/start/", TelegramLinkStartView.as_view(), name="tg-link-start"),
+    path("tg/link/confirm/", TelegramLinkConfirmView.as_view(), name="tg-link-confirm"),
+    path("tg/link/status/", TelegramLinkStatusView.as_view(), name="tg-link-status"),
     path("admin/candidates/", AdminCandidatesView.as_view(), name="admin-candidates"),
 ]
