@@ -559,6 +559,14 @@ class TelegramLinkConfirmView(APIView):
         link.code_expires_at = None
         link.save(update_fields=["user", "confirmed_at", "link_code", "code_expires_at", "updated_at"])
 
+        # Merge previous Telegram-only dialog history into this website user.
+        # This makes assistant context seamless after account linking.
+        AssistantMessage.objects.filter(
+            user__isnull=True,
+            channel=AssistantMessage.Channel.TELEGRAM,
+            external_user_id=str(link.tg_user_id),
+        ).update(user=request.user)
+
         return Response({"linked": True})
 
 

@@ -10,6 +10,7 @@ Backend for the EasyTap AI frontend built with Django, Django REST Framework, an
 - External job sourcing from HH + Remotive with demo fallback
 - Admin candidates endpoint for recruiters
 - CORS configured for local frontend development
+- Telegram account linking with website account sync
 
 ## Project structure
 
@@ -85,3 +86,14 @@ JOB_SEARCH_TIMEOUT=12
 ```
 
 Then restart Django.
+
+## Telegram account sync flow
+
+Backend endpoints used for sync:
+
+- `POST /api/tg/link/start/` - called by Telegram bot, returns one-time link code
+- `POST /api/tg/link/confirm/` - called by authenticated website user, confirms code
+- `GET /api/tg/link/status/` - website checks if current user is linked
+- `POST /api/assistant/channel-chat/` - Telegram channel chat routed through backend
+
+After `tg/link/confirm/`, backend links Telegram ID to the current user and merges existing Telegram-only assistant history into that user profile.
