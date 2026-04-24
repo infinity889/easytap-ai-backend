@@ -175,3 +175,43 @@ class Vacancy(models.Model):
 
     def __str__(self) -> str:
         return f"{self.role} @ {self.company}"
+
+
+class FavoriteVacancy(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorite_vacancies")
+    vacancy = models.ForeignKey(Vacancy, on_delete=models.CASCADE, related_name="favorited_by")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "vacancy"], name="unique_favorite_per_user"),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Favorite<{self.user.email}:{self.vacancy.role}>"
+
+
+class JobApplication(models.Model):
+    class Status(models.TextChoices):
+        PLANNED = "planned", "Planned"
+        APPLIED = "applied", "Applied"
+        INTERVIEW = "interview", "Interview"
+        OFFER = "offer", "Offer"
+        REJECTED = "rejected", "Rejected"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="job_applications")
+    vacancy = models.ForeignKey(Vacancy, on_delete=models.CASCADE, related_name="applications")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNED)
+    note = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "vacancy"], name="unique_application_per_user"),
+        ]
+        ordering = ["-updated_at", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"Application<{self.user.email}:{self.vacancy.role}:{self.status}>"

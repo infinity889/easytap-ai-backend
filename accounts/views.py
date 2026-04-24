@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import AssistantMessage, Profile, Skill, TelegramLink, User, Vacancy
+from .models import AssistantMessage, FavoriteVacancy, JobApplication, Profile, Skill, TelegramLink, User, Vacancy
 from .google_oauth import (
     GoogleOAuthError,
     build_google_authorize_url,
@@ -34,6 +34,8 @@ from .serializers import (
     ProfileSerializer,
     RegisterSerializer,
     SkillSerializer,
+    FavoriteVacancySerializer,
+    JobApplicationSerializer,
     TelegramLinkConfirmRequestSerializer,
     TelegramLinkStartRequestSerializer,
     TelegramLinkStartResponseSerializer,
@@ -559,3 +561,120 @@ class TelegramLinkStatusView(APIView):
             }
         )
         return Response(response.data)
+
+
+class FavoriteVacancyListCreateView(generics.ListCreateAPIView):
+    serializer_class = FavoriteVacancySerializer
+
+    def get_queryset(self):
+        return FavoriteVacancy.objects.filter(user=self.request.user).select_related("vacancy")
+
+    def create(self, request, *args, **kwargs):
+        vacancy_id = request.data.get("vacancy_id")
+        vacancy = Vacancy.objects.filter(id=vacancy_id, is_active=True).first()
+        if vacancy is None:
+            return Response({"detail": "Vacancy not found."}, status=status.HTTP_404_NOT_FOUND)
+        favorite, _ = FavoriteVacancy.objects.get_or_create(user=request.user, vacancy=vacancy)
+        serializer = self.get_serializer(favorite)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class FavoriteVacancyDeleteView(APIView):
+    def delete(self, request, vacancy_id):
+        favorite = FavoriteVacancy.objects.filter(user=request.user, vacancy_id=vacancy_id).first()
+        if not favorite:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        favorite.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class JobApplicationListCreateView(generics.ListCreateAPIView):
+    serializer_class = JobApplicationSerializer
+
+    def get_queryset(self):
+        return JobApplication.objects.filter(user=self.request.user).select_related("vacancy")
+
+    def create(self, request, *args, **kwargs):
+        vacancy_id = request.data.get("vacancy_id")
+        vacancy = Vacancy.objects.filter(id=vacancy_id, is_active=True).first()
+        if vacancy is None:
+            return Response({"detail": "Vacancy not found."}, status=status.HTTP_404_NOT_FOUND)
+        status_value = request.data.get("status") or JobApplication.Status.PLANNED
+        note = request.data.get("note", "")
+        application, _ = JobApplication.objects.update_or_create(
+            user=request.user,
+            vacancy=vacancy,
+            defaults={"status": status_value, "note": note},
+        )
+        serializer = self.get_serializer(application)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class JobApplicationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = JobApplicationSerializer
+
+    def get_queryset(self):
+        return JobApplication.objects.filter(user=self.request.user).select_related("vacancy")
+
+
+class TelegramFavoritesView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        tg_user_id_raw = request.query_params.get("tg_user_id", "").strip()
+        if not tg_user_id_raw.isdigit():
+            return Response({"detail": "tg_user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        link = TelegramLink.objects.filter(tg_user_id=int(tg_user_id_raw), user__isnull=False).first()
+        if link is None:
+            return Response({"linked": False, "items": []})
+
+        favorites = FavoriteVacancy.objects.filter(user=link.user).select_related("vacancy")[:10]
+        items = []
+        for favorite in favorites:
+            vacancy = favorite.vacancy
+            items.append(
+                {
+                    "vacancy_id": str(vacancy.id),
+                    "role": vacancy.role,
+                    "company": vacancy.company,
+                    "location": vacancy.location,
+                    "salary": vacancy.salary,
+                    "url": vacancy.url,
+                    "saved_at": favorite.created_at,
+                }
+            )
+        return Response({"linked": True, "items": items})
+
+
+class TelegramApplicationsView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        tg_user_id_raw = request.query_params.get("tg_user_id", "").strip()
+        if not tg_user_id_raw.isdigit():
+            return Response({"detail": "tg_user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        link = TelegramLink.objects.filter(tg_user_id=int(tg_user_id_raw), user__isnull=False).first()
+        if link is None:
+            return Response({"linked": False, "items": []})
+
+        applications = JobApplication.objects.filter(user=link.user).select_related("vacancy")[:10]
+        items = []
+        for application in applications:
+            vacancy = application.vacancy
+            items.append(
+                {
+                    "application_id": application.id,
+                    "status": application.status,
+                    "note": application.note,
+                    "updated_at": application.updated_at,
+                    "vacancy_id": str(vacancy.id),
+                    "role": vacancy.role,
+                    "company": vacancy.company,
+                    "location": vacancy.location,
+                    "salary": vacancy.salary,
+                    "url": vacancy.url,
+                }
+            )
+        return Response({"linked": True, "items": items})

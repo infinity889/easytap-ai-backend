@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate, password_validation
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import Profile, Skill, User, Vacancy
+from .models import FavoriteVacancy, JobApplication, Profile, Skill, User, Vacancy
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -200,3 +200,23 @@ class TelegramLinkStatusSerializer(serializers.Serializer):
     tg_username = serializers.CharField(required=False, allow_blank=True)
     tg_full_name = serializers.CharField(required=False, allow_blank=True)
     confirmed_at = serializers.DateTimeField(required=False)
+
+
+class FavoriteVacancySerializer(serializers.ModelSerializer):
+    vacancy = VacancySerializer(read_only=True)
+    vacancy_id = serializers.UUIDField(write_only=True, required=True)
+
+    class Meta:
+        model = FavoriteVacancy
+        fields = ("id", "vacancy", "vacancy_id", "created_at")
+        read_only_fields = ("id", "created_at", "vacancy")
+
+
+class JobApplicationSerializer(serializers.ModelSerializer):
+    vacancy = VacancySerializer(read_only=True)
+    vacancy_id = serializers.UUIDField(write_only=True, required=True)
+
+    class Meta:
+        model = JobApplication
+        fields = ("id", "vacancy", "vacancy_id", "status", "note", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at", "vacancy")
