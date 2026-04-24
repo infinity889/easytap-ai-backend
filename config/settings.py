@@ -2,8 +2,16 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+env_path = BASE_DIR / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    # Local dev fallback: some setups fill in .env.example instead of creating .env.
+    load_dotenv(BASE_DIR / ".env.example")
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -111,8 +119,23 @@ CORS_ALLOWED_ORIGINS = env_list(
     "http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
 )
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
 FRONTEND_GOOGLE_CALLBACK_URL = os.getenv(
     "FRONTEND_GOOGLE_CALLBACK_URL",
     f"{FRONTEND_URL.rstrip('/')}/auth/callback",
 )
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_OAUTH_SCOPES = [
+    "openid",
+    "email",
+    "profile",
+]
+GOOGLE_REDIRECT_PATH = "/api/auth/google/callback/"
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI",
+    f"{BACKEND_BASE_URL.rstrip('/')}{GOOGLE_REDIRECT_PATH}",
+)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")

@@ -114,3 +114,12 @@ class AdminCandidateSerializer(serializers.Serializer):
     year = serializers.IntegerField()
     top_skill = serializers.CharField()
     match = serializers.IntegerField()
+
+
+class AssistantChatRequestSerializer(serializers.Serializer):
+    message = serializers.CharField(min_length=1, max_length=4000)
+
+
+class AssistantChatResponseSerializer(serializers.Serializer):
+    reply = serializers.CharField()
+    jobs = JobMatchSerializer(many=True)

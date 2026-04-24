@@ -45,3 +45,40 @@ Frontend base URL should be configured as:
 ```env
 VITE_API_URL=http://localhost:8000/api
 ```
+
+## Google OAuth setup
+
+To enable "Continue with Google", configure an OAuth client in Google Cloud Console.
+
+Authorized redirect URI:
+
+```text
+http://localhost:8000/api/auth/google/callback/
+```
+
+Then set these environment variables in backend `.env`:
+
+```env
+BACKEND_BASE_URL=http://localhost:8000
+FRONTEND_GOOGLE_CALLBACK_URL=http://localhost:8080/auth/callback
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback/
+```
+
+## Groq AI chat setup
+
+This project now uses Groq for the student assistant chat through the backend endpoint:
+
+```text
+POST /api/assistant/chat/
+```
+
+Add your Groq API key to backend `.env`:
+
+```env
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+Then restart Django.
