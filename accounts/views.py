@@ -7,6 +7,7 @@ from django.http import Http404
 from django.shortcuts import redirect
 from django.utils import timezone
 from groq import Groq
+from django.db.models import Q
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -314,27 +315,48 @@ class VacancyCatalogView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        query = request.query_params.get("q", "").strip().lower()
-        items = Vacancy.objects.filter(is_active=True)
-        if query:
-            filtered_ids: list[str] = []
-            for vacancy in items:
-                text = " ".join(
-                    [
-                        vacancy.role,
-                        vacancy.company,
-                        vacancy.location,
-                        vacancy.source_program,
-                        vacancy.description,
-                        " ".join(vacancy.tags),
-                    ]
-                ).lower()
-                if query in text:
-                    filtered_ids.append(str(vacancy.id))
-            items = items.filter(id__in=filtered_ids)
+        query = request.query_params.get("q", "").strip()
+        category = request.query_params.get("category", "").strip()
+        employment_type = request.query_params.get("type", "").strip()
+        location = request.query_params.get("location", "").strip()
+        limit_raw = request.query_params.get("limit", "120")
+        try:
+            limit = max(1, min(300, int(limit_raw)))
+        except ValueError:
+            limit = 120
 
+        items = Vacancy.objects.filter(is_active=True).only(
+            "id",
+            "company",
+            "role",
+            "location",
+            "employment_type",
+            "salary",
+            "tags",
+            "description",
+            "url",
+            "source_program",
+            "category",
+        )
+
+        if query:
+            items = items.filter(
+                Q(role__icontains=query)
+                | Q(company__icontains=query)
+                | Q(location__icontains=query)
+                | Q(source_program__icontains=query)
+                | Q(description__icontains=query)
+            )
+        if category:
+            items = items.filter(category__iexact=category)
+        if employment_type:
+            items = items.filter(employment_type__iexact=employment_type)
+        if location:
+            items = items.filter(location__iexact=location)
+
+        items = items.order_by("category", "role")[:limit]
         payload = []
-        for vacancy in items.order_by("category", "role"):
+        for vacancy in items:
             payload.append(
                 {
                     "id": vacancy.id,
