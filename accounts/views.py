@@ -356,6 +356,33 @@ class VacancyCatalogView(APIView):
         return Response(serializer.data)
 
 
+class VacancyDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, vacancy_id):
+        vacancy = Vacancy.objects.filter(id=vacancy_id, is_active=True).first()
+        if vacancy is None:
+            return Response({"detail": "Vacancy not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        payload = {
+            "id": vacancy.id,
+            "company": vacancy.company,
+            "role": vacancy.role,
+            "location": vacancy.location,
+            "employment_type": vacancy.employment_type,
+            "salary": vacancy.salary,
+            "tags": vacancy.tags,
+            "match": 0,
+            "reason": vacancy.description or "",
+            "url": vacancy.url,
+            "source": "easytap-db",
+            "source_program": vacancy.source_program,
+            "category": vacancy.category,
+        }
+        serializer = VacancySerializer(payload)
+        return Response(serializer.data)
+
+
 class AssistantChatView(APIView):
     def post(self, request):
         serializer = AssistantChatRequestSerializer(data=request.data)

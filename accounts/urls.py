@@ -19,6 +19,7 @@ from .views import (
     TelegramLinkStartView,
     TelegramLinkStatusView,
     VacancyCatalogView,
+    VacancyDetailView,
 )
 
 
@@ -35,6 +36,7 @@ urlpatterns = [
     path("skills/<uuid:pk>/", SkillDetailView.as_view(), name="skill-detail"),
     path("jobs/matches/", JobMatchesView.as_view(), name="job-matches"),
     path("jobs/catalog/", VacancyCatalogView.as_view(), name="job-catalog"),
+    path("jobs/catalog/<uuid:vacancy_id>/", VacancyDetailView.as_view(), name="job-detail"),
     path("assistant/chat/", AssistantChatView.as_view(), name="assistant-chat"),
     path("assistant/channel-chat/", AssistantChannelChatView.as_view(), name="assistant-channel-chat"),
     path("tg/link/start/", TelegramLinkStartView.as_view(), name="tg-link-start"),
