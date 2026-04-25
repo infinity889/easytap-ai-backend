@@ -643,10 +643,16 @@ class TelegramFavoritesView(APIView):
         if link is None:
             return Response({"linked": False, "items": []})
 
-        favorites = FavoriteVacancy.objects.filter(user=link.user).select_related("vacancy")[:10]
+        frontend_base = settings.FRONTEND_URL.rstrip("/")
+        favorites = (
+            FavoriteVacancy.objects.filter(user=link.user)
+            .select_related("vacancy")
+            .order_by("-created_at")[:10]
+        )
         items = []
         for favorite in favorites:
             vacancy = favorite.vacancy
+            web_url = f"{frontend_base}/jobs/{vacancy.id}" if frontend_base else ""
             items.append(
                 {
                     "vacancy_id": str(vacancy.id),
@@ -654,6 +660,7 @@ class TelegramFavoritesView(APIView):
                     "company": vacancy.company,
                     "location": vacancy.location,
                     "salary": vacancy.salary,
+                    "web_url": web_url,
                     "url": vacancy.url,
                     "saved_at": favorite.created_at,
                 }
@@ -673,10 +680,16 @@ class TelegramApplicationsView(APIView):
         if link is None:
             return Response({"linked": False, "items": []})
 
-        applications = JobApplication.objects.filter(user=link.user).select_related("vacancy")[:10]
+        frontend_base = settings.FRONTEND_URL.rstrip("/")
+        applications = (
+            JobApplication.objects.filter(user=link.user)
+            .select_related("vacancy")
+            .order_by("-updated_at")[:10]
+        )
         items = []
         for application in applications:
             vacancy = application.vacancy
+            web_url = f"{frontend_base}/jobs/{vacancy.id}" if frontend_base else ""
             items.append(
                 {
                     "application_id": application.id,
@@ -688,6 +701,7 @@ class TelegramApplicationsView(APIView):
                     "company": vacancy.company,
                     "location": vacancy.location,
                     "salary": vacancy.salary,
+                    "web_url": web_url,
                     "url": vacancy.url,
                 }
             )
