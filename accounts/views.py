@@ -563,6 +563,20 @@ class TelegramLinkStatusView(APIView):
         return Response(response.data)
 
 
+class TelegramLinkUnlinkView(APIView):
+    def post(self, request):
+        link = TelegramLink.objects.filter(user=request.user).first()
+        if not link:
+            return Response({"linked": False})
+
+        link.user = None
+        link.confirmed_at = None
+        link.link_code = ""
+        link.code_expires_at = None
+        link.save(update_fields=["user", "confirmed_at", "link_code", "code_expires_at", "updated_at"])
+        return Response({"linked": False})
+
+
 class FavoriteVacancyListCreateView(generics.ListCreateAPIView):
     serializer_class = FavoriteVacancySerializer
 
